@@ -1,5 +1,5 @@
 # model directories
-tensor_board/
+tensorboard/
 models_distilled/
 trained_models/
 
