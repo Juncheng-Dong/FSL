@@ -9,13 +9,14 @@ import argparse
 import socket
 import time
 import sys
+import numpy as np
 
 import tensorboard_logger as tb_logger
 import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from models import model_pool
 from models.util import create_model, get_teacher_name
@@ -83,7 +84,7 @@ def parse_option():
     # specify folder
     parser.add_argument('--model_path', type=str, default='', help='path to save model')
     parser.add_argument('--tb_path', type=str, default='', help='path to tensorboard')
-    parser.add_argument('--data_root', type=str, default='../datasets', help='path to data root')
+    parser.add_argument('--data_root', type=str, default='', help='path to data root')
 
     # setting for meta-learning
     parser.add_argument('--n_test_runs', type=int, default=600, metavar='N',
@@ -177,6 +178,38 @@ def main():
         else:
             train_set = ImageNet(args=opt, partition=train_partition, transform=train_trans)
         n_data = len(train_set)
+        
+        ##################################################
+        # related data
+        top1_list = [0,  1, 11, 19, 21, 23, 25, 26, 33, 34, 40, 41, 
+                 42, 44, 52, 53, 54, 57, 60, 63]
+    
+        top2_list = [0,  1,  9, 11, 12, 15, 17, 19, 20, 21, 22, 23, 
+                     25, 26, 27, 32, 33, 34, 37, 39, 40, 41, 42, 44, 
+                     48, 52, 53, 54, 55, 56, 57, 58, 60, 62, 63]
+        
+        fix_label = np.arange(len(top2_list))
+        
+        # index of train data with original selected labels
+        train_idx = []
+        for A in top2_list:
+            idx = [i for i, x in enumerate(train_set.label) if x == A]
+            train_idx.extend(idx)
+        
+        # change data.label to tensor and select only the index
+        train_set.label = torch.tensor(train_set.label)
+        train_set.label = train_set.label[train_idx]
+        
+        # update the label to 0,1,...,len(list)-1
+        for i in range(len(top2_list)):
+            train_set.label[train_set.label == top2_list[i]] = - fix_label[i]
+        train_set.label = - train_set.label
+        train_set.label = train_set.label.tolist()
+        
+        train_set = Subset(train_set, train_idx)
+        ##################################################
+        
+        
         train_loader = DataLoader(train_set,
                                   batch_size=opt.batch_size, shuffle=True, drop_last=True,
                                   num_workers=opt.num_workers)
